@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Learning Sandbox Prototype</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="world-stage" id="worldStage" aria-label="Draggable learning sandbox map">
+        <div class="world-grid" id="worldGrid" aria-label="100 by 100 pixel map"></div>
+      </section>
+
+      <section class="map-hud" aria-label="Map information">
+        <p class="eyebrow">Learning Sandbox</p>
+        <h1>My Learning Town</h1>
+        <p class="mode-hint" id="modeHint">Drag the map to explore. Use the lower-right button to build a course.</p>
+        <div class="hud-stats">
+          <span id="buildingStat">0 Buildings</span>
+          <span id="taskStat">0 Tasks Done</span>
+          <span id="levelStat">0 Upgrades</span>
+        </div>
+      </section>
+
+      <button class="settings-button" id="settingsButton" type="button" aria-label="Open settings">
+        <img src="./assets/icons/setting.svg" alt="" aria-hidden="true" />
+      </button>
+
+      <nav class="fab-stack" aria-label="Primary actions">
+        <button class="task-button icon-action-button" id="taskOverviewButton" type="button" aria-label="Open tasks">
+          <img src="./assets/icons/toDoList.svg" alt="" aria-hidden="true" />
+        </button>
+        <button class="primary-button build-icon-button" id="createBuildingButton" type="button" aria-label="Build course">
+          <img src="./assets/icons/construction.svg" alt="" aria-hidden="true" />
+          <span>Blueprint</span>
+        </button>
+      </nav>
+    </main>
+
+    <section class="quiz-page" id="quizPage" aria-label="Quiz page" hidden>
+      <header class="quiz-header">
+        <div>
+          <p class="eyebrow" id="quizSubject">Course Quiz</p>
+          <h2 id="quizTitle">Task Quiz</h2>
+        </div>
+        <button class="icon-button" id="closeQuizButton" type="button" aria-label="Close quiz"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div class="quiz-body" id="quizBody"></div>
+    </section>
+
+    <div class="modal-backdrop" id="createBackdrop" hidden></div>
+    <section class="modal create-modal" id="createModal" aria-label="Build course" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow">Build Course</p>
+          <h2>Choose a Course Building</h2>
+        </div>
+        <button class="icon-button" id="closeCreateButton" type="button" aria-label="Close build dialog"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div class="course-list" id="courseList"></div>
+    </section>
+
+    <div class="modal-backdrop" id="taskBackdrop" hidden></div>
+    <section class="modal task-modal" id="taskModal" aria-label="Building tasks" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow" id="taskSubject">Course Building</p>
+          <h2 id="taskTitle">Building Tasks</h2>
+        </div>
+        <button class="icon-button" id="closeTaskButton" type="button" aria-label="Close task dialog"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div id="taskBody"></div>
+    </section>
+
+    <div class="modal-backdrop" id="celebrationBackdrop" hidden></div>
+    <section class="modal celebration-modal" id="celebrationModal" aria-label="Build complete celebration" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow">Learning Result</p>
+          <h2 id="celebrationTitle">Build Complete</h2>
+        </div>
+        <button class="icon-button" id="closeCelebrationButton" type="button" aria-label="Close celebration"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div id="celebrationBody"></div>
+    </section>
+
+    <div class="modal-backdrop" id="overviewBackdrop" hidden></div>
+    <section class="modal overview-modal" id="overviewModal" aria-label="Pending tasks" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow">Task Board</p>
+          <h2>Pending Tasks and Hints</h2>
+        </div>
+        <button class="icon-button" id="closeOverviewButton" type="button" aria-label="Close task board"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div id="overviewBody"></div>
+    </section>
+
+    <div class="modal-backdrop" id="settingsBackdrop" hidden></div>
+    <section class="modal settings-modal" id="settingsModal" aria-label="Application settings" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow">Game Settings</p>
+          <h2 id="settingsTitle">Settings</h2>
+        </div>
+        <button class="icon-button" id="closeSettingsButton" type="button" aria-label="Close settings"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div class="settings-layout">
+        <nav class="settings-nav" id="settingsNav" aria-label="Settings categories"></nav>
+        <section class="settings-panel" id="settingsPanel" aria-label="Settings panel"></section>
+      </div>
+    </section>
+
+    <div class="modal-backdrop" id="resourceBackdrop" hidden></div>
+    <section class="modal resource-modal" id="resourceModal" aria-label="Natural resource information" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow" id="resourceType">Natural Resource</p>
+          <h2 id="resourceTitle">Resource Info</h2>
+        </div>
+        <button class="icon-button" id="closeResourceButton" type="button" aria-label="Close resource panel"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div id="resourceBody"></div>
+    </section>
+
+    <section class="modal building-info-modal" id="buildingInfoModal" aria-label="Building information" hidden>
+      <header class="modal-header">
+        <div>
+          <p class="eyebrow" id="buildingInfoType">Course Building</p>
+          <h2 id="buildingInfoTitle">Building Info</h2>
+        </div>
+        <button class="icon-button" id="closeBuildingInfoButton" type="button" aria-label="Close building information"><img src="./assets/icons/close.svg" alt="" aria-hidden="true" /></button>
+      </header>
+      <div id="buildingInfoBody"></div>
+    </section>
+
+    <section class="placement-bar" id="placementBar" aria-label="Building placement actions" hidden>
+      <div>
+        <p class="eyebrow">Building Placement</p>
+        <h2 id="placementTitle">Choose a Building Spot</h2>
+        <p class="quiet" id="placementHint">Click a buildable area on the map.</p>
+      </div>
+      <div class="placement-actions">
+        <button class="danger-button" id="cancelPlacementButton" type="button">Cancel</button>
+        <button class="primary-button confirm-button" id="confirmPlacementButton" type="button" disabled>Confirm Build</button>
+      </div>
+    </section>
+
+    <script src="./src/app.js"></script>
+  </body>
+</html>
