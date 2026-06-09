@@ -7,6 +7,7 @@ const FOREST_PATCH_COUNT = 160;
 const ROCK_PATCH_COUNT = 130;
 const MEADOW_PATCH_COUNT = 320;
 const MIN_ZOOM_COVER = 1.01;
+const INITIAL_ZOOM_MULTIPLIER = 1.75;
 const MAX_ZOOM = 2.35;
 const CELEBRATION_CLOSE_MS = 180;
 const CANVAS_RENDER_SCALE = 1;
@@ -695,6 +696,7 @@ function startMapDrag(event) {
   if (event.target.closest(".building") || event.target.closest(".modal") || event.target.closest(".fab-stack") || event.target.closest(".map-hud")) return;
 
   const startCell = getCellFromPoint(event.clientX, event.clientY);
+  const isPlacementDrag = selectedCourse && placementDraft && startCell && isCellInPlacementDraft(startCell.row, startCell.col);
   activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   stage.classList.add("dragging");
   stage.setPointerCapture(event.pointerId);
@@ -706,6 +708,7 @@ function startMapDrag(event) {
   }
 
   dragState = {
+    mode: isPlacementDrag ? "placement" : "pan",
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
@@ -733,6 +736,11 @@ function moveMapDrag(event) {
     suppressNextTileClick = true;
   }
 
+  if (dragState.mode === "placement") {
+    selectPlacementDraftFromPoint(event.clientX, event.clientY);
+    return;
+  }
+
   pan.x = dragState.panX + deltaX;
   pan.y = dragState.panY + deltaY;
   scheduleApplyPan();
@@ -743,13 +751,23 @@ function endMapDrag(event) {
   if (activePointers.size < 2) pinchState = null;
 
   if (dragState && event.pointerId === dragState.pointerId) {
-    if (dragState.moved) {
+    if (dragState.mode === "placement") {
+      suppressNextTileClick = true;
+      if (!dragState.moved) selectPlacementDraftFromPoint(dragState.startX, dragState.startY);
+      setTimeout(() => {
+        suppressNextTileClick = false;
+      }, 0);
+    } else if (dragState.moved) {
       setTimeout(() => {
         suppressNextTileClick = false;
       }, 0);
     } else if (dragState.tile) {
       suppressNextTileClick = true;
-      processTileAction(dragState.tile.row, dragState.tile.col);
+      if (selectedCourse) {
+        selectPlacementDraftFromPoint(dragState.startX, dragState.startY);
+      } else {
+        processTileAction(dragState.tile.row, dragState.tile.col);
+      }
       setTimeout(() => {
         suppressNextTileClick = false;
       }, 0);
@@ -758,7 +776,7 @@ function endMapDrag(event) {
 
   if (activePointers.size === 1) {
     const [pointerId, pointer] = activePointers.entries().next().value;
-    dragState = { pointerId, startX: pointer.x, startY: pointer.y, panX: pan.x, panY: pan.y, moved: false };
+    dragState = { mode: "pan", pointerId, startX: pointer.x, startY: pointer.y, panX: pan.x, panY: pan.y, moved: false };
     return;
   }
 
@@ -773,7 +791,7 @@ function endMapDrag(event) {
 
 function centerMap() {
   const rect = stage.getBoundingClientRect();
-  zoom = getMinZoom();
+  zoom = clampZoom(getMinZoom() * INITIAL_ZOOM_MULTIPLIER);
   const mapWidth = getMapPixelSize() * zoom;
   const mapHeight = getMapPixelSize() * zoom;
   pan.x = (rect.width - mapWidth) / 2;
@@ -1229,7 +1247,7 @@ function renderCourses() {
       closeBuildingInfoModal();
       closeCreateModal();
       modeHint.textContent = `Placing ${selectedCourse.buildingName}, ${selectedCourse.footprint.w}x${selectedCourse.footprint.h}.`;
-      updatePlacementDraftHighlight();
+      selectPlacementDraftAtViewportCenter();
       updatePlacementBar();
       updatePlacementAnchors();
     });
@@ -1251,6 +1269,12 @@ function handleGridPointerOut(event) {
 }
 
 function handleGridClick(event) {
+  if (suppressNextTileClick) return;
+  if (selectedCourse) {
+    selectPlacementDraftFromPoint(event.clientX, event.clientY);
+    return;
+  }
+
   const cell = getCellFromPoint(event.clientX, event.clientY);
   if (!cell) return;
   handleTileClick(cell.row, cell.col);
@@ -1258,7 +1282,7 @@ function handleGridClick(event) {
 
 function updatePointerPreview(event) {
   if (activePointers.size > 0) return;
-  const cell = getCellFromPoint(event.clientX, event.clientY);
+  const cell = selectedCourse ? getPlacementAnchorFromPoint(event.clientX, event.clientY, selectedCourse) : getCellFromPoint(event.clientX, event.clientY);
   if (!cell) {
     lastPreviewCell = null;
     clearPreview();
@@ -1283,6 +1307,31 @@ function getCellFromPoint(clientX, clientY) {
   if (!isInsideMap(row, col)) return null;
   if (cellX - col * step > TILE_SIZE || cellY - row * step > TILE_SIZE) return null;
   return { row, col };
+}
+
+function getMapPointFromClient(clientX, clientY) {
+  const rect = grid.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) / zoom,
+    y: (clientY - rect.top) / zoom,
+  };
+}
+
+function getPlacementAnchorFromPoint(clientX, clientY, course) {
+  const point = getMapPointFromClient(clientX, clientY);
+  const step = TILE_SIZE + TILE_GAP;
+  const footprintWidth = course.footprint.w * TILE_SIZE + (course.footprint.w - 1) * TILE_GAP;
+  const footprintHeight = course.footprint.h * TILE_SIZE + (course.footprint.h - 1) * TILE_GAP;
+  const rawCol = Math.round((point.x - GRID_PADDING - footprintWidth / 2) / step);
+  const rawRow = Math.round((point.y - GRID_PADDING - footprintHeight / 2) / step);
+  return clampPlacementAnchor(rawRow, rawCol, course);
+}
+
+function clampPlacementAnchor(row, col, course) {
+  return {
+    row: Math.max(0, Math.min(MAP_SIZE - course.footprint.h, row)),
+    col: Math.max(0, Math.min(MAP_SIZE - course.footprint.w, col)),
+  };
 }
 
 function isCourseSubjectTaken(course) {
@@ -1374,6 +1423,18 @@ function processTileAction(row, col) {
     return;
   }
   openResourceModal(row, col);
+}
+
+function selectPlacementDraftAtViewportCenter() {
+  if (!selectedCourse) return;
+  const rect = stage.getBoundingClientRect();
+  selectPlacementDraftFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+}
+
+function selectPlacementDraftFromPoint(clientX, clientY) {
+  if (!selectedCourse) return;
+  const anchor = getPlacementAnchorFromPoint(clientX, clientY, selectedCourse);
+  selectPlacementDraft(anchor.row, anchor.col);
 }
 
 function selectPlacementDraft(row, col) {
@@ -1782,6 +1843,12 @@ function isOccupied(row, col) {
     const footprint = building.course.footprint;
     return row >= building.row && row < building.row + footprint.h && col >= building.col && col < building.col + footprint.w;
   });
+}
+
+function isCellInPlacementDraft(row, col) {
+  if (!selectedCourse || !placementDraft) return false;
+  const { footprint } = selectedCourse;
+  return row >= placementDraft.row && row < placementDraft.row + footprint.h && col >= placementDraft.col && col < placementDraft.col + footprint.w;
 }
 
 function isBuildableTerrain(terrain) {
