@@ -13,6 +13,9 @@ const CELEBRATION_CLOSE_MS = 180;
 const stage = document.querySelector("#worldStage");
 const grid = document.querySelector("#worldGrid");
 const courseList = document.querySelector("#courseList");
+const mapHud = document.querySelector("#mapHud");
+const collapseHudButton = document.querySelector("#collapseHudButton");
+const expandHudButton = document.querySelector("#expandHudButton");
 const modeHint = document.querySelector("#modeHint");
 const buildingStat = document.querySelector("#buildingStat");
 const taskStat = document.querySelector("#taskStat");
@@ -300,6 +303,8 @@ function init() {
 function bindControls() {
   document.querySelector("#createBuildingButton").addEventListener("click", openCreateModal);
   document.querySelector("#taskOverviewButton").addEventListener("click", openOverviewModal);
+  collapseHudButton.addEventListener("click", collapseMapHud);
+  expandHudButton.addEventListener("click", expandMapHud);
   closeCreateButton.addEventListener("click", closeCreateModal);
   createBackdrop.addEventListener("click", closeCreateModal);
   closeTaskButton.addEventListener("click", closeTaskModal);
@@ -337,6 +342,16 @@ function bindControls() {
     closeQuizPage();
     cancelPlacement();
   });
+}
+
+function collapseMapHud() {
+  mapHud.classList.add("is-collapsed");
+  expandHudButton.hidden = false;
+}
+
+function expandMapHud() {
+  mapHud.classList.remove("is-collapsed");
+  expandHudButton.hidden = true;
 }
 
 function openCreateModal() {

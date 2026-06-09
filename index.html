@@ -12,7 +12,10 @@
         <div class="world-grid" id="worldGrid" aria-label="100 by 100 pixel map"></div>
       </section>
 
-      <section class="map-hud" aria-label="Map information">
+      <section class="map-hud" id="mapHud" aria-label="Map information">
+        <button class="hud-toggle-button hud-collapse-button" id="collapseHudButton" type="button" aria-label="Hide map information">
+          <span aria-hidden="true"></span>
+        </button>
         <p class="eyebrow">Learning Sandbox</p>
         <h1>My Learning Town</h1>
         <p class="mode-hint" id="modeHint">Drag the map to explore. Use the lower-right button to build a course.</p>
@@ -22,6 +25,10 @@
           <span id="levelStat">0 Upgrades</span>
         </div>
       </section>
+
+      <button class="hud-toggle-button hud-expand-button" id="expandHudButton" type="button" aria-label="Show map information" hidden>
+        <span aria-hidden="true"></span>
+      </button>
 
       <button class="settings-button" id="settingsButton" type="button" aria-label="Open settings">
         <img src="./assets/icons/setting.svg" alt="" aria-hidden="true" />
