@@ -9,6 +9,7 @@ const MEADOW_PATCH_COUNT = 320;
 const MIN_ZOOM_COVER = 1.01;
 const MAX_ZOOM = 2.35;
 const CELEBRATION_CLOSE_MS = 180;
+const CANVAS_RENDER_SCALE = 1;
 
 const stage = document.querySelector("#worldStage");
 const grid = document.querySelector("#worldGrid");
@@ -289,6 +290,8 @@ let pinchState = null;
 let activePointers = new Map();
 let suppressNextTileClick = false;
 let panFrame = null;
+let mapCanvas = null;
+let lastPreviewCell = null;
 let pendingCelebrationBuildingId = null;
 let celebrationClosing = false;
 let activeQuiz = null;
@@ -333,6 +336,7 @@ function bindControls() {
   stage.addEventListener("pointercancel", endMapDrag);
   stage.addEventListener("wheel", handleWheelZoom, { passive: false });
   grid.addEventListener("pointerover", handleGridPointerOver);
+  grid.addEventListener("pointermove", handleGridPointerMove);
   grid.addEventListener("pointerout", handleGridPointerOut);
   grid.addEventListener("click", handleGridClick);
   window.addEventListener("resize", clampAndApplyPan);
@@ -690,7 +694,7 @@ function addResourceEdgeIfExposed(cell, selected, side, neighborRow, neighborCol
 function startMapDrag(event) {
   if (event.target.closest(".building") || event.target.closest(".modal") || event.target.closest(".fab-stack") || event.target.closest(".map-hud")) return;
 
-  const startTile = event.target.closest(".tile");
+  const startCell = getCellFromPoint(event.clientX, event.clientY);
   activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   stage.classList.add("dragging");
   stage.setPointerCapture(event.pointerId);
@@ -708,7 +712,7 @@ function startMapDrag(event) {
     panX: pan.x,
     panY: pan.y,
     moved: false,
-    tile: startTile ? { row: Number(startTile.dataset.row), col: Number(startTile.dataset.col) } : null,
+    tile: startCell,
   };
 }
 
@@ -1057,20 +1061,142 @@ function renderGrid() {
   grid.innerHTML = "";
   tileCache = new Array(MAP_SIZE * MAP_SIZE);
   grid.style.setProperty("--map-size", MAP_SIZE);
-  const fragment = document.createDocumentFragment();
+  grid.style.width = `${getMapPixelSize()}px`;
+  grid.style.height = `${getMapPixelSize()}px`;
+  mapCanvas = document.createElement("canvas");
+  mapCanvas.className = "terrain-canvas";
+  mapCanvas.setAttribute("aria-hidden", "true");
+  drawTerrainCanvas();
+  grid.appendChild(mapCanvas);
+  renderBuildings();
+}
+
+function drawTerrainCanvas() {
+  if (!mapCanvas) return;
+  const mapSize = getMapPixelSize();
+  const canvasSize = Math.ceil(mapSize * CANVAS_RENDER_SCALE);
+  mapCanvas.width = canvasSize;
+  mapCanvas.height = canvasSize;
+  mapCanvas.style.width = `${mapSize}px`;
+  mapCanvas.style.height = `${mapSize}px`;
+
+  const context = mapCanvas.getContext("2d", { alpha: false });
+  context.setTransform(CANVAS_RENDER_SCALE, 0, 0, CANVAS_RENDER_SCALE, 0, 0);
+  context.imageSmoothingEnabled = false;
+  context.fillStyle = "#527f45";
+  context.fillRect(0, 0, mapSize, mapSize);
+
   for (let row = 0; row < MAP_SIZE; row += 1) {
     for (let col = 0; col < MAP_SIZE; col += 1) {
-      const terrain = terrainMap[indexFor(row, col)];
-      const tile = document.createElement("div");
-      tile.className = `tile ${terrain}${isBuildableTerrain(terrain) ? "" : " blocked"}`;
-      tile.dataset.row = String(row);
-      tile.dataset.col = String(col);
-      tileCache[indexFor(row, col)] = tile;
-      fragment.appendChild(tile);
+      drawTerrainTile(context, row, col, terrainMap[indexFor(row, col)]);
     }
   }
-  grid.appendChild(fragment);
-  renderBuildings();
+}
+
+function drawTerrainTile(context, row, col, terrain) {
+  const x = GRID_PADDING + col * (TILE_SIZE + TILE_GAP);
+  const y = GRID_PADDING + row * (TILE_SIZE + TILE_GAP);
+  context.fillStyle = getTerrainColor(terrain);
+  context.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+  drawTerrainDetail(context, x, y, terrain);
+
+  context.strokeStyle = "rgba(47, 36, 31, 0.12)";
+  context.lineWidth = 1;
+  context.strokeRect(x + 0.5, y + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+
+  if (!isBuildableTerrain(terrain)) drawBlockedMarker(context, x, y);
+}
+
+function drawTerrainDetail(context, x, y, terrain) {
+  if (terrain === "meadow") {
+    context.fillStyle = "#f8e579";
+    context.beginPath();
+    context.arc(x + 13, y + 7, 2.2, 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+
+  if (terrain === "dirt") {
+    context.strokeStyle = "rgba(47, 36, 31, 0.12)";
+    context.lineWidth = 2;
+    for (let offset = -TILE_SIZE; offset < TILE_SIZE; offset += 8) {
+      context.beginPath();
+      context.moveTo(x + offset, y);
+      context.lineTo(x + offset + TILE_SIZE, y + TILE_SIZE);
+      context.stroke();
+    }
+    return;
+  }
+
+  if (terrain === "sand") {
+    context.fillStyle = "rgba(47, 36, 31, 0.18)";
+    context.beginPath();
+    context.arc(x + 7, y + 11, 1.4, 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+
+  if (terrain === "water") {
+    context.strokeStyle = "#3f91b7";
+    context.lineWidth = 3;
+    for (let offset = -TILE_SIZE; offset < TILE_SIZE * 2; offset += 10) {
+      context.beginPath();
+      context.moveTo(x + offset, y);
+      context.lineTo(x + offset - TILE_SIZE, y + TILE_SIZE);
+      context.stroke();
+    }
+    return;
+  }
+
+  if (terrain === "forest") {
+    context.fillStyle = "#2d6f36";
+    context.beginPath();
+    context.arc(x + TILE_SIZE / 2, y + TILE_SIZE / 2, 8, 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+
+  if (terrain === "hill") {
+    context.fillStyle = "rgba(255, 255, 255, 0.16)";
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(x + TILE_SIZE, y);
+    context.lineTo(x, y + TILE_SIZE);
+    context.closePath();
+    context.fill();
+    return;
+  }
+
+  if (terrain === "rock") {
+    context.fillStyle = "#c4c7c0";
+    context.beginPath();
+    context.arc(x + 9, y + 9, 5.4, 0, Math.PI * 2);
+    context.fill();
+  }
+}
+
+function drawBlockedMarker(context, x, y) {
+  context.strokeStyle = "rgba(47, 36, 31, 0.28)";
+  context.lineWidth = 1;
+  context.setLineDash([3, 3]);
+  context.strokeRect(x + 4.5, y + 4.5, TILE_SIZE - 9, TILE_SIZE - 9);
+  context.setLineDash([]);
+}
+
+function getTerrainColor(terrain) {
+  const colors = {
+    grass: "#8ccf61",
+    "grass-alt": "#77bd55",
+    meadow: "#9edb70",
+    dirt: "#b98247",
+    sand: "#d9c379",
+    water: "#5eb6d9",
+    forest: "#3f8b4c",
+    hill: "#8b8f70",
+    rock: "#9ca09c",
+  };
+  return colors[terrain] || colors.grass;
 }
 
 function renderCourses() {
@@ -1111,22 +1237,52 @@ function renderCourses() {
 }
 
 function handleGridPointerOver(event) {
-  const tile = event.target.closest(".tile");
-  if (!tile || !grid.contains(tile) || tile.contains(event.relatedTarget)) return;
-  if (activePointers.size > 0) return;
-  previewPlacement(Number(tile.dataset.row), Number(tile.dataset.col));
+  updatePointerPreview(event);
+}
+
+function handleGridPointerMove(event) {
+  updatePointerPreview(event);
 }
 
 function handleGridPointerOut(event) {
-  const tile = event.target.closest(".tile");
-  if (!tile || !grid.contains(tile) || tile.contains(event.relatedTarget)) return;
+  if (grid.contains(event.relatedTarget)) return;
+  lastPreviewCell = null;
   clearPreview();
 }
 
 function handleGridClick(event) {
-  const tile = event.target.closest(".tile");
-  if (!tile || !grid.contains(tile)) return;
-  handleTileClick(Number(tile.dataset.row), Number(tile.dataset.col));
+  const cell = getCellFromPoint(event.clientX, event.clientY);
+  if (!cell) return;
+  handleTileClick(cell.row, cell.col);
+}
+
+function updatePointerPreview(event) {
+  if (activePointers.size > 0) return;
+  const cell = getCellFromPoint(event.clientX, event.clientY);
+  if (!cell) {
+    lastPreviewCell = null;
+    clearPreview();
+    return;
+  }
+  if (lastPreviewCell && lastPreviewCell.row === cell.row && lastPreviewCell.col === cell.col) return;
+  lastPreviewCell = cell;
+  previewPlacement(cell.row, cell.col);
+}
+
+function getCellFromPoint(clientX, clientY) {
+  const rect = grid.getBoundingClientRect();
+  const localX = (clientX - rect.left) / zoom;
+  const localY = (clientY - rect.top) / zoom;
+  const cellX = localX - GRID_PADDING;
+  const cellY = localY - GRID_PADDING;
+  if (cellX < 0 || cellY < 0) return null;
+
+  const step = TILE_SIZE + TILE_GAP;
+  const col = Math.floor(cellX / step);
+  const row = Math.floor(cellY / step);
+  if (!isInsideMap(row, col)) return null;
+  if (cellX - col * step > TILE_SIZE || cellY - row * step > TILE_SIZE) return null;
+  return { row, col };
 }
 
 function isCourseSubjectTaken(course) {
@@ -1167,7 +1323,9 @@ function updatePlacementBar() {
 
 function updatePlacementDraftHighlight() {
   placementDraftCells.forEach((cell) => {
-    getTile(cell.row, cell.col)?.classList.remove("draft-place", "draft-invalid");
+    const tile = getTile(cell.row, cell.col);
+    tile?.classList.remove("draft-place", "draft-invalid");
+    cleanupTileOverlay(cell.row, cell.col, tile);
   });
   placementDraftCells = [];
   if (!selectedCourse || !placementDraft) return;
@@ -1189,7 +1347,9 @@ function previewPlacement(row, col) {
 
 function clearPreview() {
   previewCells.forEach((cell) => {
-    getTile(cell.row, cell.col)?.classList.remove("can-place", "cannot-place");
+    const tile = getTile(cell.row, cell.col);
+    tile?.classList.remove("can-place", "cannot-place");
+    cleanupTileOverlay(cell.row, cell.col, tile);
   });
   previewCells = [];
 }
@@ -1634,7 +1794,28 @@ function isBaseGrassTerrain(terrain) {
 
 function getTile(row, col) {
   if (!isInsideMap(row, col)) return null;
-  return tileCache[indexFor(row, col)];
+  const index = indexFor(row, col);
+  if (!tileCache[index]) tileCache[index] = createTileOverlay(row, col);
+  return tileCache[index];
+}
+
+function createTileOverlay(row, col) {
+  const tile = document.createElement("div");
+  tile.className = "tile tile-overlay";
+  tile.style.left = `${GRID_PADDING + col * (TILE_SIZE + TILE_GAP)}px`;
+  tile.style.top = `${GRID_PADDING + row * (TILE_SIZE + TILE_GAP)}px`;
+  grid.appendChild(tile);
+  return tile;
+}
+
+function cleanupTileOverlay(row, col, tile) {
+  if (!tile || hasTileHighlight(tile)) return;
+  tile.remove();
+  tileCache[indexFor(row, col)] = null;
+}
+
+function hasTileHighlight(tile) {
+  return ["can-place", "cannot-place", "draft-place", "draft-invalid"].some((className) => tile.classList.contains(className));
 }
 
 function getBuilding(buildingId) {

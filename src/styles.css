@@ -81,13 +81,6 @@ button {
   position: absolute;
   left: 0;
   top: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--map-size), var(--tile-size));
-  grid-template-rows: repeat(var(--map-size), var(--tile-size));
-  gap: var(--tile-gap);
-  width: max-content;
-  min-width: max-content;
-  padding: var(--grid-padding);
   background: #527f45;
   image-rendering: pixelated;
   transform: translate(0, 0) scale(1);
@@ -95,13 +88,18 @@ button {
   will-change: transform;
 }
 
+.terrain-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  image-rendering: pixelated;
+}
+
 .tile {
-  position: relative;
-  display: grid;
-  place-items: center;
+  position: absolute;
   width: var(--tile-size);
   height: var(--tile-size);
-  border: 1px solid rgba(47, 36, 31, 0.12);
+  pointer-events: none;
   user-select: none;
 }
 
