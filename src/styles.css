@@ -81,8 +81,8 @@ button {
   left: 0;
   top: 0;
   display: grid;
-  grid-template-columns: repeat(100, var(--tile-size));
-  grid-template-rows: repeat(100, var(--tile-size));
+  grid-template-columns: repeat(300, var(--tile-size));
+  grid-template-rows: repeat(300, var(--tile-size));
   gap: var(--tile-gap);
   width: max-content;
   min-width: max-content;
@@ -217,6 +217,15 @@ button {
 .building.selected {
   filter: brightness(1.07);
   transform: translateY(-3px);
+}
+
+.building.selected {
+  z-index: 12;
+  outline: 4px solid #fff8e7;
+  outline-offset: -4px;
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 248, 231, 0.62),
+    5px 5px 0 rgba(47, 36, 31, 0.28);
 }
 
 .building.constructing,
@@ -1075,6 +1084,55 @@ h3 {
   gap: 8px;
 }
 
+.placement-error-toast {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 90;
+  width: max-content;
+  max-width: min(520px, calc(100vw - 32px));
+  margin: 0;
+  padding: 0;
+  color: #d12f25;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.3;
+  text-align: center;
+  text-shadow:
+    2px 0 #fff8e7,
+    -2px 0 #fff8e7,
+    0 2px #fff8e7,
+    0 -2px #fff8e7,
+    3px 3px 0 rgba(47, 36, 31, 0.28);
+  pointer-events: none;
+  animation: placementErrorRise 3000ms ease forwards;
+}
+
+.confirm-button.is-invalid {
+  background: #c9c4bb;
+  color: #77716a;
+  box-shadow: 4px 4px 0 #8f8981;
+}
+
+@keyframes placementErrorRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 12px));
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  72% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 28px));
+  }
+}
+
 .primary-button:disabled,
 .task-button:disabled,
 .danger-button:disabled,
@@ -1589,6 +1647,10 @@ h3 {
   .placement-actions .primary-button,
   .placement-actions .danger-button {
     width: 100%;
+  }
+
+  .placement-error-toast {
+    max-width: calc(100vw - 24px);
   }
 
   .settings-layout {

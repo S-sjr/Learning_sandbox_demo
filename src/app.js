@@ -1,12 +1,12 @@
-const MAP_SIZE = 100;
+const MAP_SIZE = 300;
 const TILE_SIZE = 20;
 const TILE_GAP = 2;
 const GRID_PADDING = 10;
 const MAX_LEVEL = 4;
-const FOREST_PATCH_COUNT = 14;
-const ROCK_PATCH_COUNT = 18;
-const MEADOW_PATCH_COUNT = 48;
-const MIN_ZOOM_FLOOR = 1;
+const FOREST_PATCH_COUNT = 160;
+const ROCK_PATCH_COUNT = 130;
+const MEADOW_PATCH_COUNT = 320;
+const MIN_ZOOM_COVER = 1.01;
 const MAX_ZOOM = 2.35;
 const CELEBRATION_CLOSE_MS = 180;
 
@@ -290,6 +290,7 @@ let pendingCelebrationBuildingId = null;
 let celebrationClosing = false;
 let activeQuiz = null;
 let activeSettingsSection = settingsSections[0].id;
+let placementErrorTimer = null;
 
 function init() {
   terrainMap = buildTerrainMap();
@@ -569,6 +570,13 @@ function openBuildingInfoModal(building) {
 
 function closeBuildingInfoModal() {
   buildingInfoModal.hidden = true;
+  clearActiveBuildingSelection();
+}
+
+function clearActiveBuildingSelection() {
+  if (!activeBuildingId) return;
+  activeBuildingId = null;
+  renderBuildings();
 }
 
 function renderBuildingInfoModal(building) {
@@ -828,7 +836,7 @@ function clampZoom(value) {
 function getMinZoom() {
   const rect = stage.getBoundingClientRect();
   const mapSize = getMapPixelSize();
-  return Math.max(MIN_ZOOM_FLOOR, rect.width / mapSize, rect.height / mapSize) * 1.01;
+  return Math.max(rect.width / mapSize, rect.height / mapSize) * MIN_ZOOM_COVER;
 }
 
 function getPointCenter(a, b) {
@@ -854,20 +862,71 @@ function buildTerrainMap() {
 }
 
 function getBaseTerrain(row, col) {
-  const riverCol = 9 + Math.floor(Math.sin(row * 0.28) * 3);
-  const lakeA = Math.pow(row - 35, 2) + Math.pow(col - 39, 2) < 55;
-  const lakeB = Math.pow(row - 9, 2) + Math.pow(col - 34, 2) < 28;
+  const rough = terrainNoise(row, col, 0.09);
+  const broad = terrainNoise(row, col, 0.032);
+  const westBay =
+    isNoisyEllipse(row, col, 70, 55, 42, 48, 0.18) ||
+    isNoisyEllipse(row, col, 112, 70, 40, 34, 0.2) ||
+    (col < 28 + Math.sin(row * 0.09) * 10 + rough * 14 && row > 32 + broad * 8 && row < 158 + Math.sin(col * 0.22) * 12 + rough * 10);
+  const inlandLake = false;
+  const southLagoon = isNoisyEllipse(row, col, 230, 96, 24, 34, 0.22);
+  const southEastSea =
+    (col > 236 + Math.sin(row * 0.06) * 15 + rough * 16 && row > 172 + broad * 12) ||
+    (row > 238 + Math.sin(col * 0.05) * 14 + terrainNoise(row, col, 0.07) * 14 && col > 146 + broad * 12);
+  const westRiverCol = 66 + Math.floor(Math.sin(row * 0.05 + 0.8) * 11) + Math.floor(row * 0.035) + Math.floor(terrainNoise(row, 7, 0.13) * 5);
+  const centerRiverCol = 142 + Math.floor(Math.sin(row * 0.044 + 2.1) * 18) + Math.floor(row * 0.22) + Math.floor(terrainNoise(row, 19, 0.11) * 7);
+  const riverToSea = row > 152 && row < 256 && Math.abs(col - centerRiverCol) <= 1 + Math.max(0, Math.floor(terrainNoise(row, col, 0.17) * 2));
+  const bayRiver = row > 82 && row < 235 && Math.abs(col - westRiverCol) <= 2 + Math.max(0, Math.floor(terrainNoise(row, col, 0.15) * 2));
 
-  if ((col >= riverCol && col <= riverCol + 1) || lakeA || lakeB) return "water";
-  if (row < 9 && col > 36) return "hill";
-  if (row > 39 && col < 18) return "dirt";
+  if (westBay || inlandLake || southLagoon || southEastSea || riverToSea || bayRiver) return "water";
+  if (isHillCountry(row, col)) return "hill";
+  if (isForestCountry(row, col)) return "forest";
+  if (isDirtCountry(row, col)) return "dirt";
   return (row + col) % 2 === 0 ? "grass" : "grass-alt";
+}
+
+function isEllipse(row, col, centerRow, centerCol, radiusRow, radiusCol) {
+  return Math.pow((row - centerRow) / radiusRow, 2) + Math.pow((col - centerCol) / radiusCol, 2) < 1;
+}
+
+function isNoisyEllipse(row, col, centerRow, centerCol, radiusRow, radiusCol, roughness) {
+  const shape = Math.pow((row - centerRow) / radiusRow, 2) + Math.pow((col - centerCol) / radiusCol, 2);
+  return shape < 1 + terrainNoise(row, col, 0.075) * roughness;
+}
+
+function isHillCountry(row, col) {
+  const rough = terrainNoise(row, col, 0.08);
+  if (row < 24 + Math.sin(col * 0.055) * 10 + rough * 12 && col > 118 + rough * 8 && col < 258 + rough * 7) return true;
+  if (row < 66 + Math.sin(col * 0.08) * 8 + rough * 10 && col > 232 + rough * 8) return true;
+  if (row > 248 + Math.sin(col * 0.09) * 12 + rough * 12 && col < 72 + rough * 10) return true;
+  if (row > 266 + Math.sin(col * 0.07) * 10 + rough * 10 && col < 120 + rough * 8) return true;
+  return isNoisyEllipse(row, col, 68, 238, 35, 38, 0.2) || isNoisyEllipse(row, col, 252, 52, 36, 46, 0.2) || isNoisyEllipse(row, col, 24, 188, 22, 50, 0.18);
+}
+
+function isDirtCountry(row, col) {
+  const rough = terrainNoise(row, col, 0.07);
+  if (isNoisyEllipse(row, col, 110, 172, 30, 48, 0.24)) return true;
+  if (isNoisyEllipse(row, col, 116, 214, 22, 42, 0.24)) return true;
+  if (row > 206 + rough * 9 && row < 252 + rough * 7 && col > 88 + rough * 10 && col < 164 + rough * 11) return true;
+  return isNoisyEllipse(row, col, 214, 126, 28, 46, 0.2) || isNoisyEllipse(row, col, 148, 198, 18, 30, 0.22);
+}
+
+function isForestCountry(row, col) {
+  const rough = terrainNoise(row, col, 0.1);
+  if (row > 132 + Math.sin(col * 0.12) * 8 + rough * 10 && row < 202 - Math.sin(col * 0.09) * 10 + rough * 8 && col > 18 + rough * 8 && col < 92 + rough * 10) return true;
+  return isNoisyEllipse(row, col, 168, 68, 34, 46, 0.26) || isNoisyEllipse(row, col, 188, 108, 22, 28, 0.24);
+}
+
+function terrainNoise(row, col, scale) {
+  const wave = Math.sin(row * scale + Math.sin(col * scale * 1.7) * 2.1) + Math.cos(col * scale * 1.3 + Math.sin(row * scale * 0.9) * 1.8);
+  const speckle = Math.sin((row * 12.9898 + col * 78.233) * 0.11) * 0.35;
+  return (wave + speckle) / 2.35;
 }
 
 function addMeadowPatches(map) {
   let attempts = 0;
   let patches = 0;
-  while (patches < MEADOW_PATCH_COUNT && attempts < 600) {
+  while (patches < MEADOW_PATCH_COUNT && attempts < 3600) {
     attempts += 1;
     const size = Math.random() < 0.72 ? 1 : 2;
     const footprint = { w: size, h: size };
@@ -886,9 +945,9 @@ function addMeadowPatches(map) {
 function addRockPatches(map) {
   let attempts = 0;
   let patches = 0;
-  while (patches < ROCK_PATCH_COUNT && attempts < 500) {
+  while (patches < ROCK_PATCH_COUNT && attempts < 2600) {
     attempts += 1;
-    const footprint = { w: randomInt(1, 6), h: randomInt(1, 6) };
+    const footprint = { w: randomInt(2, 7), h: randomInt(2, 7) };
     const row = randomInt(2, MAP_SIZE - footprint.h - 2);
     const col = randomInt(2, MAP_SIZE - footprint.w - 2);
     const cells = createConnectedPatchCells(row, col, footprint);
@@ -934,12 +993,13 @@ function createConnectedPatchCells(row, col, footprint) {
 function addForestPatches(map) {
   let attempts = 0;
   let patches = 0;
-  while (patches < FOREST_PATCH_COUNT && attempts < 300) {
+  while (patches < FOREST_PATCH_COUNT && attempts < 2600) {
     attempts += 1;
-    const row = randomInt(2, MAP_SIZE - 4);
-    const col = randomInt(2, MAP_SIZE - 4);
-    const cells = getFootprintCells(row, col, { w: 2, h: 2 });
-    if (cells.length !== 4) continue;
+    const footprint = Math.random() < 0.68 ? { w: 2, h: 2 } : { w: 3, h: 3 };
+    const row = randomInt(2, MAP_SIZE - footprint.h - 2);
+    const col = randomInt(2, MAP_SIZE - footprint.w - 2);
+    const cells = getFootprintCells(row, col, footprint);
+    if (cells.length !== footprint.w * footprint.h) continue;
     if (!cells.every((cell) => isTreeBaseTerrain(map[indexFor(cell.row, cell.col)]))) continue;
     cells.forEach((cell) => {
       map[indexFor(cell.row, cell.col)] = "forest";
@@ -1048,6 +1108,8 @@ function updatePlacementBar() {
   if (!selectedCourse) {
     placementBar.hidden = true;
     confirmPlacementButton.disabled = true;
+    confirmPlacementButton.classList.remove("is-invalid");
+    clearPlacementError();
     return;
   }
 
@@ -1057,13 +1119,17 @@ function updatePlacementBar() {
   if (!placementDraft) {
     placementHint.textContent = "Click a buildable area. You can still drag the map to adjust the view.";
     confirmPlacementButton.disabled = true;
+    confirmPlacementButton.classList.remove("is-invalid");
+    clearPlacementError();
     return;
   }
 
   placementHint.textContent = placementDraft.valid
     ? `Selected row ${placementDraft.row + 1}, column ${placementDraft.col + 1}. Ready to build.`
     : "This spot is not buildable. Choose a larger empty area.";
-  confirmPlacementButton.disabled = !placementDraft.valid;
+  confirmPlacementButton.disabled = false;
+  confirmPlacementButton.classList.toggle("is-invalid", !placementDraft.valid);
+  if (placementDraft.valid) clearPlacementError();
 }
 
 function updatePlacementDraftHighlight() {
@@ -1104,6 +1170,9 @@ function processTileAction(row, col) {
   const terrain = terrainMap[indexFor(row, col)];
   if (isBaseGrassTerrain(terrain)) {
     closeResourceModal();
+    closeTaskModal();
+    closeBuildingInfoModal();
+    clearActiveBuildingSelection();
     modeHint.textContent = defaultHint;
     return;
   }
@@ -1122,7 +1191,13 @@ function selectPlacementDraft(row, col) {
 }
 
 function confirmPlacement() {
-  if (!selectedCourse || !placementDraft?.valid) return;
+  if (!selectedCourse || !placementDraft) return;
+  if (!placementDraft.valid) {
+    showPlacementError("This terrain cannot hold that building.");
+    return;
+  }
+
+  clearPlacementError();
   const building = {
     id: `${selectedCourse.id}-${Date.now()}`,
     row: placementDraft.row,
@@ -1543,11 +1618,32 @@ function randomInt(min, max) {
 function cancelPlacement() {
   selectedCourse = null;
   placementDraft = null;
+  clearPlacementError();
   clearPreview();
   updatePlacementAnchors();
   updatePlacementDraftHighlight();
   updatePlacementBar();
   modeHint.textContent = "Drag the map to explore. Use the lower-right button to build a course.";
+}
+
+function showPlacementError(message) {
+  clearPlacementError();
+  const toast = document.createElement("p");
+  toast.className = "placement-error-toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  placementErrorTimer = setTimeout(() => {
+    toast.remove();
+    placementErrorTimer = null;
+  }, 3000);
+}
+
+function clearPlacementError() {
+  if (placementErrorTimer) {
+    clearTimeout(placementErrorTimer);
+    placementErrorTimer = null;
+  }
+  document.querySelector(".placement-error-toast")?.remove();
 }
 
 function updateHud() {
