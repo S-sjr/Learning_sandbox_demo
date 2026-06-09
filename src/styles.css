@@ -13,6 +13,7 @@
   --tile-size: 20px;
   --tile-gap: 2px;
   --grid-padding: 10px;
+  --map-size: 300;
   --ink: #2f241f;
   --muted: #695b50;
   --panel: #fff8e7;
@@ -81,8 +82,8 @@ button {
   left: 0;
   top: 0;
   display: grid;
-  grid-template-columns: repeat(300, var(--tile-size));
-  grid-template-rows: repeat(300, var(--tile-size));
+  grid-template-columns: repeat(var(--map-size), var(--tile-size));
+  grid-template-rows: repeat(var(--map-size), var(--tile-size));
   gap: var(--tile-gap);
   width: max-content;
   min-width: max-content;
@@ -101,6 +102,7 @@ button {
   width: var(--tile-size);
   height: var(--tile-size);
   border: 1px solid rgba(47, 36, 31, 0.12);
+  user-select: none;
 }
 
 .tile.grass {

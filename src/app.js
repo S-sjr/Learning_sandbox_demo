@@ -274,10 +274,12 @@ const terrainInfo = {
 };
 
 let terrainMap = [];
+let tileCache = [];
 let placedBuildings = [];
 let selectedCourse = null;
 let activeBuildingId = null;
 let previewCells = [];
+let placementDraftCells = [];
 let selectedResourceCells = [];
 let placementDraft = null;
 let pan = { x: 0, y: 0 };
@@ -286,6 +288,7 @@ let dragState = null;
 let pinchState = null;
 let activePointers = new Map();
 let suppressNextTileClick = false;
+let panFrame = null;
 let pendingCelebrationBuildingId = null;
 let celebrationClosing = false;
 let activeQuiz = null;
@@ -329,6 +332,9 @@ function bindControls() {
   stage.addEventListener("pointerup", endMapDrag);
   stage.addEventListener("pointercancel", endMapDrag);
   stage.addEventListener("wheel", handleWheelZoom, { passive: false });
+  grid.addEventListener("pointerover", handleGridPointerOver);
+  grid.addEventListener("pointerout", handleGridPointerOut);
+  grid.addEventListener("click", handleGridClick);
   window.addEventListener("resize", clampAndApplyPan);
 
   window.addEventListener("keydown", (event) => {
@@ -725,7 +731,7 @@ function moveMapDrag(event) {
 
   pan.x = dragState.panX + deltaX;
   pan.y = dragState.panY + deltaY;
-  applyPan();
+  scheduleApplyPan();
 }
 
 function endMapDrag(event) {
@@ -788,6 +794,14 @@ function applyPan() {
   pan.x = Math.max(minX, Math.min(maxX, pan.x));
   pan.y = Math.max(minY, Math.min(maxY, pan.y));
   grid.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+}
+
+function scheduleApplyPan() {
+  if (panFrame) return;
+  panFrame = requestAnimationFrame(() => {
+    panFrame = null;
+    applyPan();
+  });
 }
 
 function getMapPixelSize() {
@@ -1041,21 +1055,21 @@ function hasNeighborTerrain(row, col, terrain, map = terrainMap) {
 
 function renderGrid() {
   grid.innerHTML = "";
+  tileCache = new Array(MAP_SIZE * MAP_SIZE);
+  grid.style.setProperty("--map-size", MAP_SIZE);
+  const fragment = document.createDocumentFragment();
   for (let row = 0; row < MAP_SIZE; row += 1) {
     for (let col = 0; col < MAP_SIZE; col += 1) {
       const terrain = terrainMap[indexFor(row, col)];
-      const tile = document.createElement("button");
-      tile.type = "button";
+      const tile = document.createElement("div");
       tile.className = `tile ${terrain}${isBuildableTerrain(terrain) ? "" : " blocked"}`;
       tile.dataset.row = String(row);
       tile.dataset.col = String(col);
-      tile.setAttribute("aria-label", `Map tile ${row + 1}-${col + 1}`);
-      tile.addEventListener("pointerenter", () => previewPlacement(row, col));
-      tile.addEventListener("pointerleave", clearPreview);
-      tile.addEventListener("click", () => handleTileClick(row, col));
-      grid.appendChild(tile);
+      tileCache[indexFor(row, col)] = tile;
+      fragment.appendChild(tile);
     }
   }
+  grid.appendChild(fragment);
   renderBuildings();
 }
 
@@ -1096,12 +1110,31 @@ function renderCourses() {
   });
 }
 
+function handleGridPointerOver(event) {
+  const tile = event.target.closest(".tile");
+  if (!tile || !grid.contains(tile) || tile.contains(event.relatedTarget)) return;
+  if (activePointers.size > 0) return;
+  previewPlacement(Number(tile.dataset.row), Number(tile.dataset.col));
+}
+
+function handleGridPointerOut(event) {
+  const tile = event.target.closest(".tile");
+  if (!tile || !grid.contains(tile) || tile.contains(event.relatedTarget)) return;
+  clearPreview();
+}
+
+function handleGridClick(event) {
+  const tile = event.target.closest(".tile");
+  if (!tile || !grid.contains(tile)) return;
+  handleTileClick(Number(tile.dataset.row), Number(tile.dataset.col));
+}
+
 function isCourseSubjectTaken(course) {
   return placedBuildings.some((building) => building.course.subject === course.subject);
 }
 
 function updatePlacementAnchors() {
-  grid.querySelectorAll(".tile").forEach((tile) => tile.classList.remove("anchor-ready", "can-place", "cannot-place"));
+  clearPreview();
 }
 
 function updatePlacementBar() {
@@ -1133,9 +1166,13 @@ function updatePlacementBar() {
 }
 
 function updatePlacementDraftHighlight() {
-  grid.querySelectorAll(".tile").forEach((tile) => tile.classList.remove("draft-place", "draft-invalid"));
+  placementDraftCells.forEach((cell) => {
+    getTile(cell.row, cell.col)?.classList.remove("draft-place", "draft-invalid");
+  });
+  placementDraftCells = [];
   if (!selectedCourse || !placementDraft) return;
-  getFootprintCells(placementDraft.row, placementDraft.col, selectedCourse.footprint).forEach((cell) => {
+  placementDraftCells = getFootprintCells(placementDraft.row, placementDraft.col, selectedCourse.footprint);
+  placementDraftCells.forEach((cell) => {
     getTile(cell.row, cell.col)?.classList.add(placementDraft.valid ? "draft-place" : "draft-invalid");
   });
 }
@@ -1596,7 +1633,8 @@ function isBaseGrassTerrain(terrain) {
 }
 
 function getTile(row, col) {
-  return grid.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+  if (!isInsideMap(row, col)) return null;
+  return tileCache[indexFor(row, col)];
 }
 
 function getBuilding(buildingId) {
